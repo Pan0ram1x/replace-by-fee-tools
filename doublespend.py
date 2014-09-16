@@ -12,11 +12,9 @@ import logging
 import math
 import time
 
-from bitcoin.core import b2x, b2lx, x, lx, str_money_value, COIN, CTransaction, CTxIn, CTxOut
+from bitcoin.core import b2x, b2lx, x, lx, str_money_value, COIN, CMutableTransaction, CMutableTxIn, CMutableTxOut
 from bitcoin.core.script import CScript, OP_RETURN, OP_CHECKMULTISIG
 from bitcoin.wallet import CBitcoinAddress
-
-DUST = int(0.0001 * COIN)
 
 parser = argparse.ArgumentParser(
         description="Attempt to double-spend a payment",
@@ -33,7 +31,7 @@ parser.add_argument('-d', action='store', type=int,
                     dest='delay',
                     help="Delay in seconds between payment and double-spend")
 parser.add_argument('--dust', action='store', type=float,
-                    default=0.00001,
+                    default=0.0001,
                     help="Dust amount")
 parser.add_argument('--fee1', action='store', type=float,
                     metavar='FEEPERKB',
@@ -74,16 +72,16 @@ feeperbyte2 = args.fee2 / 1000 * COIN
 # Construct payment tx
 payment_address = CBitcoinAddress(args.address)
 
-payment_txout = CTxOut(int(args.amount * COIN), payment_address.to_scriptPubKey())
-change_txout = CTxOut(0, rpc.getnewaddress().to_scriptPubKey())
+payment_txout = CMutableTxOut(int(args.amount * COIN), payment_address.to_scriptPubKey())
+change_txout = CMutableTxOut(0, rpc.getnewaddress().to_scriptPubKey())
 
-tx = CTransaction()
+tx = CMutableTransaction()
 tx.vout.append(change_txout)
 tx.vout.append(payment_txout)
 
 # Add all undesirable txouts meant to reduce propagation
 if args.op_return:
-    op_ret_txout = CTxOut(0, CScript([OP_RETURN, b'\x00unsuccessful double-spend attempt\x00']))
+    op_ret_txout = CMutableTxOut(0, CScript([OP_RETURN, b'\x00unsuccessful double-spend attempt\x00']))
     tx.vout.append(op_ret_txout)
 
 if args.multisig:
@@ -95,7 +93,7 @@ if args.multisig:
 
 for bad_addr in args.bad_addr:
     bad_addr = CBitcoinAddress(bad_addr)
-    txout = CTxOut(args.dust, bad_addr.to_scriptPubKey())
+    txout = CMutableTxOut(args.dust, bad_addr.to_scriptPubKey())
     tx.vout.append(txout)
 
 
@@ -126,7 +124,7 @@ while (value_in - value_out) / len(tx.serialize()) < feeperbyte1:
                 (b2lx(new_outpoint.hash), new_outpoint.n,
                  str_money_value(new_amount)))
 
-        new_txin = CTxIn(new_outpoint)
+        new_txin = CMutableTxIn(new_outpoint)
         tx.vin.append(new_txin)
 
         value_in += new_amount
@@ -141,7 +139,7 @@ while (value_in - value_out) / len(tx.serialize()) < feeperbyte1:
 
 r = rpc.signrawtransaction(tx)
 assert(r['complete'])
-tx = r['tx']
+tx = CMutableTransaction.from_tx(r['tx'])
 
 logging.debug('Payment tx %s' % b2x(tx.serialize()))
 logging.info('Payment tx size: %.3f KB, fees: %s, %s BTC/KB' % \
@@ -189,7 +187,7 @@ while (value_in - value_out) / len(tx.serialize()) < feeperbyte2:
                 (b2lx(new_outpoint.hash), new_outpoint.n,
                  str_money_value(new_amount)))
 
-        new_txin = CTxIn(new_outpoint)
+        new_txin = CMutableTxIn(new_outpoint)
         tx.vin.append(new_txin)
 
         value_in += new_amount

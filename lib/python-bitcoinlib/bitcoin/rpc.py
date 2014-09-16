@@ -300,8 +300,18 @@ class Proxy(RawProxy):
 
         This is for use with raw transactions, NOT normal use.
         """
-        r = self._call('getrawchangeaddress', account)
+        r = self._call('getrawchangeaddress')
         return CBitcoinAddress(r)
+
+    def getrawmempool(self, verbose=False):
+        """Return the mempool"""
+        if verbose:
+            return self._call('getrawmempool', verbose)
+
+        else:
+            r = self._call('getrawmempool')
+            r = [lx(txid) for txid in r]
+            return r
 
     def getrawtransaction(self, txid, verbose=False):
         """Return transaction with hash txid
@@ -397,10 +407,24 @@ class Proxy(RawProxy):
         json_outpoints = [{'txid':b2lx(outpoint.hash),'vout':outpoint.n} for outpoint in outpoints]
         return self._call('lockunspent', unlock, json_outpoints)
 
-    def sendrawtransaction(self, tx):
-        """Submit transaction to local node and network."""
+    def sendrawtransaction(self, tx, allowhighfees=False):
+        """Submit transaction to local node and network.
+
+        allowhighfees - Allow even if fees are unreasonably high.
+        """
         hextx = hexlify(tx.serialize())
-        r = self._call('sendrawtransaction', hextx)
+        r = None
+        if allowhighfees:
+            r = self._call('sendrawtransaction', hextx, True)
+        else:
+            r = self._call('sendrawtransaction', hextx)
+        return lx(r)
+
+    def sendtoaddress(self, addr, amount):
+        """Sent amount to a given address"""
+        addr = str(addr)
+        amount = float(amount)/COIN
+        r = self._call('sendtoaddress', addr, amount)
         return lx(r)
 
     def signrawtransaction(self, tx, *args):
@@ -429,7 +453,21 @@ class Proxy(RawProxy):
     def validateaddress(self, address):
         """Return information about an address"""
         r = self._call('validateaddress', str(address))
-        r['address'] = CBitcoinAddress(r['address'])
+        if r['isvalid']:
+            r['address'] = CBitcoinAddress(r['address'])
         if 'pubkey' in r:
             r['pubkey'] = unhexlify(r['pubkey'])
         return r
+
+    def _addnode(self, node, arg):
+        r = self._call('addnode', node, arg)
+        return r
+
+    def addnode(self, node):
+        return self._addnode(node, 'add')
+
+    def addnodeonetry(self, node):
+        return self._addnode(node, 'onetry')
+
+    def removenode(self, node):
+        return self._addnode(node, 'remove')
